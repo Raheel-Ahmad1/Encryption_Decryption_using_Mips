@@ -1,0 +1,443 @@
+# Menu options
+# r - read text buffer from file 
+# p - print text buffer
+# e - encrypt text buffer
+# d - decrypt text buffer
+# w - write text buffer to file
+# g - guess the key
+# q - quit
+
+.data
+MENU:              .asciiz "Commands (read, print, encrypt, decrypt, write, guess, quit):"
+REQUEST_FILENAME:  .asciiz "Enter file name:"
+REQUEST_KEY: 	 .asciiz "Enter key (upper case letters only):"
+REQUEST_KEYLENGTH: .asciiz "Enter a number (the key length) for guessing:"
+REQUEST_LETTER: 	 .asciiz "Enter guess of most common letter:"
+ERROR:		 .asciiz "There was an error.\n"
+Statement:     .asciiz "THE QUICK BROWN FOX JUMPS OVER THE LAZY DOG."
+Statement1:    .asciiz "UIF RVJDL CSPXO GPY KVNQT PWFS UIF MBAZ EPH."
+
+
+FILE_NAME: 	.space 256	# maximum file name length, should not be exceeded
+KEY_STRING: 	.space 256 	# maximum key length, should not be exceeded
+
+
+
+.align 2		# ensure word alignment in memory for text buffer (not important)
+TEXT_BUFFER:  	.space 10000
+.align 2		# ensure word alignment in memory for other data (probably important)
+# TODO: define any other spaces you need, for instance, an array for letter frequencies
+number_occ : .word 400
+
+##############################################################
+.text
+	main:	move $s1 $0 	# Keep track of the buffer length (starts at zero)
+MainLoop:	li $v0 4		# print string
+		la $a0 MENU
+		syscall
+		li $v0 12	# read char into $v0
+		syscall
+		move $s0 $v0	# store command in $s0			
+		jal PrintNewLine
+
+		beq $s0 'r' read
+		beq $s0 'p' print
+		beq $s0 'w' write
+		beq $s0 'e' encrypt
+		beq $s0 'd' decrypt
+		beq $s0 'g' guess
+		beq $s0 'q' exit
+		b MainLoop
+
+read:		jal GetFileName
+		li $v0 13	# open file
+		la $a0 FILE_NAME 
+		li $a1 0		# flags (read)
+		li $a2 0		# mode (set to zero)
+		syscall
+		move $s0 $v0
+		bge $s0 0 read2	# negative means error
+		li $v0 4		# print string
+		la $a0 ERROR
+		syscall
+		b MainLoop
+read2:		li $v0 14	# read file
+		move $a0 $s0
+		la $a1 TEXT_BUFFER
+		li $a2 9999
+		syscall
+		move $s1 $v0	# save the input buffer length
+		bge $s0 0 read3	# negative means error
+		li $v0 4		# print string
+		la $a0 ERROR
+		syscall
+		move $s1 $0	# set buffer length to zero
+		la $t0 TEXT_BUFFER
+		sb $0 ($t0) 	# null terminate the buffer 
+		b MainLoop
+read3:		la $t0 TEXT_BUFFER
+		add $t0 $t0 $s1
+		sb $0 ($t0) 	# null terminate the buffer that was read
+		li $v0 16	# close file
+		move $a0 $s0
+		syscall
+		la $a0 TEXT_BUFFER
+		jal ToUpperCase
+print:		la $a0 TEXT_BUFFER
+		jal PrintBuffer
+		b MainLoop	
+
+write:		jal GetFileName
+		li $v0 13	# open file
+		la $a0 FILE_NAME 
+		li $a1 1		# flags (write)
+		li $a2 0		# mode (set to zero)
+		syscall
+		move $s0 $v0
+		bge $s0 0 write2	# negative means error
+		li $v0 4		# print string
+		la $a0 ERROR
+		syscall
+		b MainLoop
+write2:		li $v0 15	# write file
+		move $a0 $s0
+		la $a1 TEXT_BUFFER
+		move $a2 $s1	# set number of bytes to write
+		syscall
+		bge $v0 0 write3	# negative means error
+		li $v0 4		# print string
+		la $a0 ERROR
+		syscall
+		b MainLoop
+		write3:
+		li $v0 16	# close file
+		move $a0 $s0
+		syscall
+		b MainLoop
+
+encrypt:		jal GetKey
+		la $a0 Statement
+		la $a1 KEY_STRING
+		jal EncryptBuffer
+		la $a0 TEXT_BUFFER
+		jal PrintBuffer
+		b MainLoop
+
+decrypt:		jal GetKey
+		la $a0 TEXT_BUFFER
+		la $a1 KEY_STRING
+		jal DecryptBuffer
+		la $a0 TEXT_BUFFER
+		jal PrintBuffer
+		b MainLoop
+
+guess:		li $v0 4		# print string
+		la $a0 REQUEST_KEYLENGTH
+		syscall
+		li $v0 5		# read an integer
+		syscall
+		move $s2 $v0
+		
+		li $v0 4		# print string
+		la $a0 REQUEST_LETTER
+		syscall
+		li $v0 12	# read char into $v0
+		syscall
+		move $s3 $v0	# store command in $s0			
+		jal PrintNewLine
+
+		move $a0 $s2
+		la $a1 TEXT_BUFFER
+		la $a2 KEY_STRING
+		move $a3 $s3
+		jal GuessKey
+		li $v0 4		# print String
+		la $a0 KEY_STRING
+		syscall
+		jal PrintNewLine
+		b MainLoop
+
+exit:		li $v0 10 	# exit
+		syscall
+
+###########################################################
+PrintBuffer:	li $v0 4          # print contents of a0
+		syscall
+		li $v0 11	# print newline character
+		li $a0 '\n'
+		syscall
+		jr $ra
+
+###########################################################
+PrintNewLine:	li $v0 11	# print char
+		li $a0 '\n'
+		syscall
+		jr $ra
+
+###########################################################
+PrintSpace:	li $v0 11	# print char
+		li $a0 ' '
+		syscall
+		jr $ra
+
+#######################################################
+GetFileName:	addi $sp $sp -4
+		sw $ra ($sp)
+		li $v0 4		# print string
+		la $a0 REQUEST_FILENAME
+		syscall
+		li $v0 8		# read string
+		la $a0 FILE_NAME  # up to 256 characters into this memory
+		li $a1 256
+		syscall
+		la $a0 FILE_NAME 
+		jal TrimNewline
+		lw $ra ($sp)
+		addi $sp $sp 4
+		jr $ra
+
+###########################################################
+GetKey:		addi $sp $sp -4
+		sw $ra ($sp)
+		li $v0 4		# print string
+		la $a0 REQUEST_KEY
+		syscall
+		li $v0 8		# read string
+		la $a0 KEY_STRING  # up to 256 characters into this memory
+		li $a1 256
+		syscall
+		la $a0 KEY_STRING
+		jal TrimNewline
+		la $a0 KEY_STRING
+		jal ToUpperCase
+		lw $ra ($sp)
+		addi $sp $sp 4
+		jr $ra
+
+###########################################################
+# Given a null terminated text string pointer in $a0, if it contains a newline
+# then the buffer will instead be terminated at the first newline
+TrimNewline:	lb $t0 ($a0)
+		beq $t0 '\n' TNLExit
+		beq $t0 $0 TNLExit	# also exit if find null termination
+		addi $a0 $a0 1
+		b TrimNewline
+TNLExit:		sb $0 ($a0)
+		jr $ra
+
+##################################################
+# converts the provided null terminated buffer to upper case
+# $a0 buffer pointer
+ToUpperCase:	lb $t0 ($a0)
+		beq $t0 $zero TUCExit
+		blt $t0 'a' TUCSkip
+		bgt $t0 'z' TUCSkip
+		addi $t0 $t0 -32	# difference between 'A' and 'a' in ASCII
+		sb $t0 ($a0)
+TUCSkip:		addi $a0 $a0 1
+		b ToUpperCase
+TUCExit:		jr $ra
+
+###################################################
+# END OF PROVIDED CODE... 
+# TODO: use this space below to implement required procedures
+###################################################
+end:
+j main
+ syscall
+
+
+
+
+
+
+
+##################################################
+# null terminated buffer is in $a0
+# null terminated key is in $a1
+EncryptBuffer:	# TODO: Implement this function!
+
+
+lb $t1,0($a1)
+li $t0,65
+sub $t0,$t1,$t0
+#move $a0,$t0
+#li $v0,1			# print the encrypted character
+#syscall
+
+
+
+
+addi $t3, $a0,0
+la $s1,TEXT_BUFFER
+loop:
+ lb $t4, 0($t3)
+ beq $t4,32,isspace
+ beq $t4,46,isdot
+ beq $t4,10,end1 	 	# Terminate program on the \n 
+ beqz $t4,end1  			# Terminate Program when the end of the string is reached 
+  
+Encrypt2:
+ j EncryptUpper   	# EncryptUppercase characters
+
+PrintEncryptChar:
+
+
+
+ li $v0,11 			# print the encrypted character
+ syscall
+l1: sb $a0,0($s1)
+addi $s1,$s1,1
+addi $t3,$t3,1 			# Points to the next character
+ j loop
+		jr $ra
+
+##################################################
+# null terminated buffer is in $a0
+# null terminated key is in $a1
+DecryptBuffer:	# TODO: Implement this function!
+
+lb $t1,0($a1)
+li $t0,65
+sub $t0,$t1,$t0
+sub $t0,$0,$t0
+
+addi $t3, $a0,0
+la $s1,TEXT_BUFFER
+loop1:lb $t4, 0($t3)  	# First character is read
+ beq $t4,32,isspaced
+ beq $t4,46,isdotd
+ beq $t4,10,end  	# Terminate program when \n is pressed
+ beqz $t4,end   	# Terminate program when the end of the string is reached 
+ 
+
+Decrypt2:
+ j DecryptUpper 	# Decrypt Upper case characters
+ 
+PrintDecryptChar:
+#sb $a0,0($s1)
+addi $s1,$s1,1
+ li $v0,11 			# Print the Decrypted character
+ syscall
+l2:add $t3,$t3,1			# Points to the next character		# length is incremented
+ j loop1
+		jr $ra
+
+###########################################################
+# a0 keySize - size of key length to guess
+# a1 Buffer - pointer to null terminated buffer to work with
+# a2 KeyString - on return will contain null terminated string with guess
+# a3 common letter guess - for instance 'E' 
+GuessKey:	# TODO: Implement this function!
+#la $t3,TEXT_BUFFER
+addi $t3, $a1,0
+la $s3,KEY_STRING 
+
+addi $t3,$t3,12
+l5:lb $t4, 0($t3)  	# First character is read
+   	# Terminate program when the end of the string is reached  
+ beq $t4,32, l6
+ beq $t4,46,end
+
+j l9
+array_op:
+		sll $v0, $v0, 2 # Multiplies $v0 to 4 so that we get the necessary position for the array element.
+		la $t0, number_occ # Load the array in $t0
+		add $t0, $t0, $v0 # Get the counter to point to the right position for the curret letter..
+		lw $t1, 0($t0) # Load the current number count for the letter needed in $t1
+		addi $t1,$t1 1 # Increment the counter for the particular letter
+		sw $t1, number_occ($v0) # Store back to the array
+		#j input # loop back to process the next input symbol.
+print_prep:
+		li $s0, 64 # We'll use $s0 to print the letters A, B... in the loop. The ANSII character for A is 65 so	 
+			   # we Load the previous number so that we can do incremet in the actual loop. We reuse this register,
+			   # since we don't need anymore the old value stored in it.
+		li $s1, 0 # Initial value in S1 we're going to use to go through the array and get how many times each letter
+			  # occured by using this variable.We reuse this register, since we don't need anymore 
+			  # the old value stored in it.
+		li $s3, 25 # This variable contains the number of English letters -1 (because we start counting from 0)
+			   # we use this to stop the loop and go to the end of the program. We reuse this register, since 
+			   # we don't need anymore the old value stored in it.
+
+		li $v0, 11 # Load code for priting char.
+		move $a0, $s4 # Print new line to get good formating.
+		syscall 
+
+
+l9:
+
+sub $s1,$t4,$a3
+addi $s1,$s1,65
+sb $s1,0($s3)
+addi $s3,$s3,1
+
+l6:add $t3,$t3,1 			# Points to the next character		# length is incremented
+#j l5
+		jr $ra
+
+
+isspace:
+li $a0,' '
+li $v0,11 			# print the  character
+syscall
+j l1
+ 
+isdot:
+li $a0,'.'
+li $v0,11 			# print the  character
+syscall
+j l1
+
+
+EncryptUpper:
+ li $t5,26   				# Encrypt  characters
+ sub $t4,$t4,65
+ add $t4, $t4, $t0
+ div $t4,$t5
+ mfhi $a0
+ addi $a0,$a0,65
+ j PrintEncryptChar
+
+DecryptUpper:
+ li $t5,26   				# Decrypt  characters
+ sub $t4,$t4,65
+ add $t4, $t4, $t0
+ sub $t6,$zero,$t4
+ li $t7,1
+ 
+ ModFornegativeUpper:
+ mul $s0,$t5,$t7
+ bgt $s0,$t6,ModCalUpper
+ addi $t7,$t7,1
+ j ModFornegativeUpper
+ 
+ ModCalUpper:
+ add $t4,$s0,$t4
+ div $t4,$t5
+ mfhi $a0
+ addi $a0,$a0,65
+ j PrintDecryptChar
+
+
+isspaced:
+li $a0,' '
+li $v0,11 			# print the character
+syscall
+j l2
+ 
+isdotd:
+li $a0,'.'
+li $v0,11 			# print the  character
+syscall
+li $a0,'\n'
+li $v0,11 			# print the  character
+syscall
+j main
+
+end1:
+li $a0,'\n'
+li $v0,11 			# print the character
+syscall
+j main
+ li $v0,10
+ syscall
