@@ -1,9 +1,9 @@
 # Encryption_Decryption_using_Mips
-This project is an I/O console to encrypt and decrypt text using a simple ciphers. Specifically you will encrypt and decrypt text with a Vigenere cipher, which is a simple extension of the ` well know Caesar cipher, where letters are shifted by a given number
+This project is an I/O console to encrypt and decrypt text using a simple ciphers. Specifically we will encrypt and decrypt text with a Vigenere cipher, which is a simple extension of the well know Caesar cipher, where letters are shifted by a given number
 
 # Project Discription
 
-Specifically you will encrypt and decrypt text with a Vigenere cipher, which is a simple extension of the `
+Specifically we will encrypt and decrypt text with a Vigenere cipher, which is a simple extension of the `
 well know Caesar cipher, where letters are shifted by a given number. For instance a shift of 3 would
 change an A to D. At the end of the alphabet, we wrap back to the beginning, so a shift of 3 also changes
 a Z to C.
